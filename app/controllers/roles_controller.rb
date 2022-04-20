@@ -1,6 +1,8 @@
 class RolesController < ApplicationController
+  include AuthorizationHelper
+
   def action_allowed?
-    current_role_name.eql?("Super-Administrator")
+    current_user_has_super_admin_privileges?
   end
 
   # GETs should be safe (see http://www.w3.org/2001/tag/doc/whenToUseGet.html)
@@ -44,7 +46,6 @@ class RolesController < ApplicationController
 
   def update
     @role = Role.find(params[:id])
-
     if @role.update_with_params(params[:role])
       Role.rebuild_cache
       @role = Role.find(params[:id])
@@ -60,8 +61,6 @@ class RolesController < ApplicationController
     Role.find(params[:id]).destroy
     redirect_to Role
   end
-
-  protected
 
   def foreign
     @other_roles = @role.other_roles

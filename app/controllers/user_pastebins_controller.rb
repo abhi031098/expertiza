@@ -1,24 +1,23 @@
+# frozen_string_literal: true
+
 class UserPastebinsController < ApplicationController
+  include AuthorizationHelper
+
   before_action :set_user_pastebin, only: %i[show edit update destroy]
 
   def action_allowed?
     case params[:action]
     when 'index', 'create'
-      ['Instructor',
-       'Teaching Assistant',
-       'Student',
-       'Administrator'].include? current_role_name
+      current_user_has_student_privileges?
     end
   end
 
   # GET /user_pastebins
   def index
-    begin
-      json = UserPastebin.get_current_user_pastebin_json current_user
-      render json: json
-    rescue StandardError => e
-      flash[:error] = e.message
-    end
+    json = UserPastebin.get_current_user_pastebin_json current_user
+    render json: json
+  rescue StandardError => e
+    flash[:error] = e.message
   end
 
   # GET /user_pastebins/1
@@ -40,7 +39,7 @@ class UserPastebinsController < ApplicationController
       data = UserPastebin.get_current_user_pastebin_json current_user
       render json: data, status: 200
     else
-      data = {message: "Short Form or Long Form in the Text Macro is not valid"}
+      data = { message: 'Short Form or Long Form in the Text Macro is not valid' }
       render json: data, status: 422
     end
   end

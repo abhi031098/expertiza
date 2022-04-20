@@ -1,11 +1,9 @@
 class TrackNotificationsController < ApplicationController
+  include AuthorizationHelper
+
   # Give permission to manage notifications to appropriate roles
   def action_allowed?
-    ['Instructor',
-     'Teaching Assistant',
-     'Administrator',
-     'Super-Administrator',
-     'Student'].include? current_role_name
+    current_user_has_student_privileges?
   end
 
   # GET /track_notifications *** Only used to add an individual exemption to showing notifications
@@ -15,7 +13,7 @@ class TrackNotificationsController < ApplicationController
     track_notification.user_id = current_user.id
     track_notification.notification_id = params[:id]
     track_notification.save
-    redirect_back
+    redirect_back fallback_location: root_path
   end
 
   private

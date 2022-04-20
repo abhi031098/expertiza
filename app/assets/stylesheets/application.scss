@@ -12,9 +12,6 @@
 @import "redbox";
 @import "react-simpletabs/dist/react-simpletabs";
 @import "jquery.datetimepicker";
-$icon-font-path: "bootstrap-sass/assets/fonts/bootstrap/";
-@import "bootstrap-sass/assets/stylesheets/bootstrap-sprockets";
-@import "bootstrap-sass/assets/stylesheets/bootstrap";
 @import "navbar";
 @import "tree_display";
 @import "awesomplete";
@@ -26,3 +23,4 @@ $icon-font-path: "bootstrap-sass/assets/fonts/bootstrap/";
 @import "confirm_box";
 @import "inner-pages";
 @import "homepage";
+@import 'bootstrap-datetimepicker';

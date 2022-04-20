@@ -1,4 +1,6 @@
 class QuestionsController < ApplicationController
+  include AuthorizationHelper
+
   # A question is a single entry within a questionnaire
   # Questions provide a way of scoring an object
   # based on either a numeric value or a true/false
@@ -11,15 +13,12 @@ class QuestionsController < ApplicationController
   end
 
   def action_allowed?
-    ['Super-Administrator',
-     'Administrator',
-     'Instructor',
-     'Teaching Assistant'].include? current_role_name
+    current_user_has_ta_privileges?
   end
 
   # GETs should be safe (see http://www.w3.org/2001/tag/doc/whenToUseGet.html)
   verify method: :post, only: %i[destroy create update],
-         redirect_to: {action: :list}
+         redirect_to: { action: :list }
 
   # List all questions in paginated view
   def list
@@ -40,7 +39,7 @@ class QuestionsController < ApplicationController
   # Save a question created by the user
   # follows from new
   def create
-    @question = Question.new(params[:question])
+    @question = Question.new(question_params[:question])
     if @question.save
       flash[:notice] = 'The question was successfully created.'
       redirect_to action: 'list'
@@ -57,8 +56,8 @@ class QuestionsController < ApplicationController
   # save the update to an existing question
   # follows from edit
   def update
-    @question = Question.find(params[:id])
-    if @question.update_attributes(params[:question])
+    @question = Question.find(question_params[:id])
+    if @question.update_attributes(question_params[:question])
       flash[:notice] = 'The question was successfully updated.'
       redirect_to action: 'show', id: @question
     else
@@ -71,9 +70,15 @@ class QuestionsController < ApplicationController
   def destroy
     question = Question.find(params[:id])
     questionnaire_id = question.questionnaire_id
+
+    if AnswerHelper.check_and_delete_responses(questionnaire_id)
+      flash[:success] = 'You have successfully deleted the question. Any existing reviews for the questionnaire have been deleted!'
+    else
+      flash[:success] = 'You have successfully deleted the question!'
+    end
+
     begin
       question.destroy
-      flash[:success] = "You have successfully deleted the question!"
     rescue StandardError
       flash[:error] = $ERROR_INFO
     end
@@ -84,5 +89,11 @@ class QuestionsController < ApplicationController
   def types
     types = Question.distinct.pluck(:type)
     render json: types.to_a
+  end
+
+  private
+
+  def question_params
+    params.permit(:id, :question)
   end
 end

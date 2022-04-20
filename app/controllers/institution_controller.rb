@@ -1,8 +1,8 @@
 class InstitutionController < ApplicationController
+  include AuthorizationHelper
+
   def action_allowed?
-    ['Super-Administrator',
-     'Administrator',
-     'Instructor'].include? current_role_name
+    current_user_has_instructor_privileges?
   end
 
   def index
@@ -12,10 +12,10 @@ class InstitutionController < ApplicationController
 
   # GETs should be safe (see http://www.w3.org/2001/tag/doc/whenToUseGet.html)
   verify method: :post, only: %i[destroy create update],
-         redirect_to: {action: :list}
+         redirect_to: { action: :list }
 
   def list
-    @institutions = Institution.order('name').all
+    @institutions = Institution.all
   end
 
   def show
@@ -27,7 +27,7 @@ class InstitutionController < ApplicationController
   end
 
   def create
-    @institution = Institution.new(name: params[:institution][:name])
+    @institution = Institution.new(institution_params)
     if @institution.save
       flash[:success] = 'The institution was successfully created.'
       redirect_to action: 'list'
@@ -55,5 +55,11 @@ class InstitutionController < ApplicationController
   def delete
     Institution.find(params[:id]).destroy
     redirect_to action: 'list'
+  end
+
+  private
+
+  def institution_params
+    params.require(:institution).permit(:name)
   end
 end

@@ -1,11 +1,10 @@
 # added the badges controller as part of E1822
 # added a create method for badge creation functionality
 class BadgesController < ApplicationController
+  include AuthorizationHelper
+
   def action_allowed?
-    ['Instructor',
-     'Teaching Assistant',
-     'Administrator',
-     'Super-Administrator'].include? current_role_name
+    current_user_has_ta_privileges?
   end
 
   def new
@@ -20,11 +19,11 @@ class BadgesController < ApplicationController
   def create
     @badge = Badge.new(badge_params)
     image_file = params[:badge][:image_file]
-    if !image_file.nil?
+    if image_file
       File.open(Rails.root.join('app', 'assets', 'images', 'badges', image_file.original_filename), 'wb') do |file|
-      file.write(image_file.read)
-    end
-    @badge.image_name = image_file.original_filename
+        file.write(image_file.read)
+      end
+      @badge.image_name = image_file.original_filename
     else
       @badge.image_name = ''
     end

@@ -1,6 +1,26 @@
-<H1>Score for <%= @assignment.name %></H1>
+<script type="text/javascript" src="/assets/view_my_scores_helper.js"></script>
+
+<script type="text/javascript">
+    // Added March 2021 -- Set up the mini tagging report on first loading the page
+    $( document ).ready(function() {
+        var total_tags = countTotalTags()
+        var tagged_tags = countTaggedTags()
+        document.getElementById("tag_stats").innerHTML = "Tag Finished: " + tagged_tags + "/" + total_tags
+        //  Hides Mini Tagging Report when no reviews to tag
+        var link_main = document.getElementById("view_link");
+        if (total_tags === 0) {
+            link_main.style.display = "none";
+        }
+    });
+</script>
 
 
+<H1><%=t ".score_for"%> <%= @assignment.name %></H1>
+<div id="view_link">
+  <div id="tag_stats"></div>
+  <%= link_to t(".main_view"), controller: 'grades', action: 'view_team', id: params[:id] %>
+  <BR/>
+</div>
 
 <table class="grades" >
 <%= render :partial => 'grades/participant_charts', :locals => {:prefix => nil} %> 
@@ -15,12 +35,12 @@
 </table>
 <% case @assignment.reputation_algorithm %>
 <% when 'Hamer' %>
-	<h3>Reputation</h3>
-    <p id = "reputation_score" class = <%= get_css_style_for_hamer_reputation(@participant.Hamer)%> style = "width:60px;"><%= @participant.Hamer %></p>
+	<h3><%=t ".reputation"%></h3>
+    <p id="reputation_score" class = <%= get_css_style_for_hamer_reputation(@participant.Hamer)%> style="width:60px;"><%= @participant.Hamer %></p>
 <% when 'Lauw' %>
-	<h3>Reputation</h3>
-    <p id = "reputation_score" class = <%= get_css_style_for_lauw_reputation(@participant.Lauw)%> style = "width:60px;"><%= @participant.Lauw %></p>
+	<h3><%=t ".reputation"%></h3>
+    <p id="reputation_score" class = <%= get_css_style_for_lauw_reputation(@participant.Lauw)%> style="width:60px;"><%= @participant.Lauw %></p>
 <%end%>
 <BR/>
-<a href="javascript:window.history.back()">Back</a>
+<a href="javascript:window.history.back()"><%=t ".back"%></a>
 

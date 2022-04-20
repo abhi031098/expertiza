@@ -34,6 +34,8 @@
 //= require awesome_input
 //= require jquery-bar-rating/jquery.barrating
 //= require Chart.min
+//= require moment
+//= require bootstrap-datetimepicker
 // Eliminate the “element.dispatchEvent is not a function” error
 jQuery.noConflict();
 
@@ -81,16 +83,16 @@ function checkDeadlines()
 {
 
   var dates = new Array();
-  var inputs = document.getElementsByTagName('input');
+  var array = document.getElementsByTagName('input');
   var index = 0;
-  for(i = 0; i < inputs.length; i++){
-    if(inputs[i].id.match("due_date")){
-      if (inputs[i].value == "") {
+  for(i = 0; i < array.length; i++){
+    if(array[i].id.match("due_date")){
+      if (array[i].value == "") {
         alert("Please specify a date for each deadline before continuing.")
           return false
       }
       else
-        dates[index++] = inputs[i]	  	   	     	    
+        dates[index++] = array[i]	  	   	     	    
     }
   }
 

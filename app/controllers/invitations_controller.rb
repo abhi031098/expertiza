@@ -1,8 +1,12 @@
 class InvitationsController < ApplicationController
+  include AuthorizationHelper
+  include ConferenceHelper
+
   before_action :check_user_before_invitation, only: [:create]
   before_action :check_team_before_accept, only: [:accept]
+
   def action_allowed?
-    ['Instructor', 'Teaching Assistant', 'Administrator', 'Super-Administrator', 'Student'].include? current_role_name
+    current_user_has_student_privileges?
   end
 
   def new
@@ -14,7 +18,7 @@ class InvitationsController < ApplicationController
     if Invitation.is_invited?(@student.user_id, @user.id, @student.parent_id)
       create_utility
     else
-      ExpertizaLogger.error LoggerMessage.new("", @student.name, "Student was already invited")
+      ExpertizaLogger.error LoggerMessage.new('', @student.name, 'Student was already invited')
       flash[:note] = "You have already sent an invitation to \"#{@user.name}\"."
     end
 
@@ -26,17 +30,19 @@ class InvitationsController < ApplicationController
   def update_join_team_request(user, student)
     # update the status in the join_team_request to A
     return unless user && student
+
     # participant information of invitee and assignment
     participant = AssignmentParticipant.where('user_id = ? and parent_id = ?', user.id, student.parent_id).first
     return unless participant
+
     old_entry = JoinTeamRequest.where('participant_id = ? and team_id = ?', participant.id, params[:team_id]).first
     # Status code A for accepted
-    old_entry.update_attribute("status", 'A') if old_entry
+    old_entry.update_attribute('status', 'A') if old_entry
   end
 
   def auto_complete_for_user_name
     search = params[:user][:name].to_s
-    @users = User.where("LOWER(name) LIKE ?", "%#{search}%") if search.present?
+    @users = User.where('LOWER(name) LIKE ?', "%#{search}%") if search.present?
   end
 
   def accept
@@ -71,14 +77,18 @@ class InvitationsController < ApplicationController
     @invitation.assignment_id = @student.parent_id
     @invitation.reply_status = 'W'
     @invitation.save
+    prepared_mail = MailerHelper.send_mail_to_user(@user, 'Invitation Received on Expertiza', 'invite_participant_to_team', '')
+    prepared_mail.deliver
     ExpertizaLogger.info LoggerMessage.new(controller_name, @student.name, "Successfully invited student #{@user.id}", request)
   end
 
   def check_user_before_invitation
     # user is the student you are inviting to your team
     @user = User.find_by(name: params[:user][:name].strip)
-    # student has information about the participant
+    # User/Author has information about the participant
     @student = AssignmentParticipant.find(params[:student_id])
+    @assignment = Assignment.find(@student.parent_id)
+    @user ||= create_coauthor if @assignment.is_conference_assignment
 
     return unless current_user_id?(@student.user_id)
 
@@ -93,11 +103,15 @@ class InvitationsController < ApplicationController
 
   def check_participant_before_invitation
     @participant = AssignmentParticipant.where('user_id = ? and parent_id = ?', @user.id, @student.parent_id).first
-    # check if the user is a participant of the assignment
+    # check if the user is a participant in the assignment
     unless @participant
-      flash[:error] = "The user \"#{params[:user][:name].strip}\" is not a participant of this assignment."
-      redirect_to view_student_teams_path student_id: @student.id
-      return
+      if @assignment.is_conference_assignment
+        add_participant_coauthor
+      else
+        flash[:error] = "The user \"#{params[:user][:name].strip}\" is not a participant in this assignment."
+        redirect_to view_student_teams_path student_id: @student.id
+        return
+      end
     end
     check_team_before_invitation
   end
@@ -117,6 +131,7 @@ class InvitationsController < ApplicationController
     # check if invited user is already in the team
 
     return if team_member.empty?
+
     flash[:error] = "The user \"#{@user.name}\" is already a member of the team."
     redirect_to view_student_teams_path student_id: @student.id
   end

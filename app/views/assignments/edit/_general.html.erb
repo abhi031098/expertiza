@@ -1,9 +1,5 @@
 <script>
-<%if !@assignment.nil? and SubmissionRecord.file_submissions_present?(@assignment.id)%>
-  $(document).ready(function(){
-      $('#assignment_form_assignment_directory_path').prop("disabled",true);
-  });
-<%end %>
+
 function teamAssignmentChanged() {
   var msg = 'Warning! Unchecking this box will hide teams that already exist.'
 
@@ -30,6 +26,18 @@ function microtaskChanged() {
   }
 }
 
+//This function replaces whitespace ' ' in assignment name by '_' and assign to directory path field value
+$(function() {
+    $("#assignment_form_assignment_name").change(function() {
+        filename = $( "#assignment_form_assignment_name" ).val().replace(/ /g,"_").replace(/[/\\?%*:|"<>/$&!#%^@]/g, '');;
+        $('#assignment_form_assignment_directory_path').val(filename);
+    });
+});
+//E2138 added function
+function autogenerate_submission(){
+  assignment_form.assignment.directory_path = assignment_form.assignment.name;
+}
+
 </script>
 
 <table id='assignment_general_info_table' class="borderless">
@@ -49,43 +57,20 @@ function microtaskChanged() {
 
 <tr>
 <td style='padding:5px'><%= label_tag('assignment_form[assignment][course_id]', 'Course:') %></td>
-<td style='padding:5px'><%= select('assignment_form[assignment]', 'course_id', course_options(@assignment_form.assignment.instructor), {:selected => @assignment_form.assignment.course_id}, {:class => "form-control", :style => 'width: 250px', :disabled => session[:user].role.name == 'Teaching Assistant'}) %></td>
+<td style='padding:5px'><%= select('assignment_form[assignment]', 'course_id', course_options(@assignment_form.assignment.instructor), {:selected => @assignment_form.assignment.course_id}, {:class => "form-control", :style => 'width: 250px'}) %></td>
 </tr>
 
-<%if session[:user].role.name == 'Teaching Assistant' %>
-
-
-<tr>
-  <td></td>
-  <td style='color:red;padding:0px 10px 0.8em;'> TAs are not allowed to move an assignment to another course.</td>
-</tr>
-<%end %>
-
-<tr>
-  <div class="form-inline">
-    <td style='padding:5px'><%= label_tag('assignment_form[assignment][directory_path]', 'Submission directory:') %></td>
-    <td style='padding:5px'><%= text_field_tag('assignment_form[assignment][directory_path]', @assignment_form.assignment.directory_path, :style => 'width:250px', class: 'form-control') %>  (Mandatory field. No space or special chars. <br/> Directory name will be auto-generated if not provided. In the form of assignment_[assignment_id].)
-      <img src="/assets/info.png" title='DO NOT change this field if the assignment is already in progress. If you do, student submissions may be lost.'>
-    </td>
-  <tr>
-    <td></td>
-    <td style='color:red;padding:0px 10px 0.8em;'> You are not allowed to change the directory if files are already present in that directory.</td>
-  </tr>
-  </div>
+<tr><div class="form-inline">
+<td style='padding:5px'><%= label_tag('assignment_form[assignment][directory_path]', 'Submission directory:') %></td>
+<td style='padding:5px'><%= text_field_tag('assignment_form[assignment][directory_path]', @assignment_form.assignment.directory_path, :style => 'width:250px', class: 'form-control') %>  (Mandatory field. No space or special chars. <br/> Directory name will be auto-generated if not provided. In the form of assignment_[assignment_id].)
+  <img src="/assets/info.png" title='- DO NOT change this filed for an on-going assignment. This may cause lost of student submitted file.'>
+</td></div>
 </tr>
 
 <tr>
-  <td style='padding:5px'><%= label_tag('assignment_form[assignment][spec_location]', 'Description URL: ') %></td>
-  <td style='padding:5px'><%= text_field_tag('assignment_form[assignment][spec_location]', @assignment_form.assignment.spec_location, :style => 'width:250px', class: 'form-control') %></td>
+<td style='padding:5px'><%= label_tag('assignment_form[assignment][spec_location]', 'Description URL: ') %></td>
+<td style='padding:5px'><%= text_field_tag('assignment_form[assignment][spec_location]', @assignment_form.assignment.spec_location, :style => 'width:250px', class: 'form-control') %></td>
 </tr>
-
-  <!-- Adding sample submissions for students to refer to -->
-  <tr>
-    <td style='padding:5px'><%= label_tag('assignment_form[assignment][sample_assignment_id]', 'Sample Assignment:') %>
-      <img src="/assets/info.png" title='Display examples of how this assignment has been done in the past'>
-    </td>
-    <td style='padding:5px'><%= select('assignment_form[assignment]', 'sample_assignment_id', sample_sub_options, :selected => @assignment_form.assignment.sample_assignment_id) %></td>
-  </tr>
 </table>
 
 <br/>
@@ -109,30 +94,36 @@ function microtaskChanged() {
     <td style='padding:5px' id='assignment_team_assignment_field'>
 
       <div class="form-inline">
-      <% if(@assignment_form.assignment.max_team_size == 1)%>
-        <%= check_box_tag('team_assignment', 'true', false, {:onChange => 'hasTeamsChanged()'}) %>
-      <% else %>
         <%= check_box_tag('team_assignment', 'true', @assignment_form.assignment.team_assignment?, {:onChange => 'hasTeamsChanged()'}) %>
-      <% end %>
-      <% @assignment_form.assignment.max_team_size %>
-      <%= label_tag('team_assignment', 'Has teams?') %>
+        <% @assignment_form.assignment.max_team_size %>
+        <%= label_tag('team_assignment', 'Has teams?') %>
 
-    <span style='padding:5px' class="form-inline" id='assignment_team_count_field' <%= 'hidden' if @assignment_form.assignment.max_team_size == 1%>>
-
-      <!--Teammate reviews fields-->
-      <input name="assignment_form[assignment][show_teammate_reviews]" type="hidden" value="false"/>
-      <%= label_tag('assignment_form[assignment][max_team_size]', 'Maximum number of members per team:') %>
-      <%= text_field_tag('assignment_form[assignment][max_team_size]', @assignment_form.assignment.max_team_size, {:style => 'width:50px;', class: 'form-control'}) %>
-    
-      </span>
+        <span style='padding:5px' class="form-inline" id='assignment_team_count_field' <%= 'hidden' unless @assignment_form.assignment.team_assignment?%>>
+          <!--Teammate reviews fields-->
+          <input name="assignment_form[assignment][show_teammate_reviews]" type="hidden" value="false"/>
+          <%= label_tag('assignment_form[assignment][max_team_size]', 'Maximum number of members per team:') %>
+          <%= text_field_tag('assignment_form[assignment][max_team_size]', @assignment_form.assignment.max_team_size, {:style => 'width:50px;', class: 'form-control'}) %>
+        </span>
       </div>
-      <span id='assignment_show_teammate_reviews' class="form-inline"  <%= 'hidden' if @assignment_form.assignment.max_team_size < 2%>>
-
-      <%= check_box_tag('assignment_form[assignment][show_teammate_reviews]', 'true', @assignment_form.assignment.show_teammate_reviews) %>
-      <%= label_tag('assignment_form[assignment][show_teammate_reviews]', 'Show teammate reviews?') %>
-    </span>
+      <span id='assignment_show_teammate_reviews' class="form-inline"  <%= 'hidden' unless @assignment_form.assignment.team_assignment?%>>
+        <%= check_box_tag('assignment_form[assignment][show_teammate_reviews]', 'true', @assignment_form.assignment.show_teammate_reviews) %>
+        <%= label_tag('assignment_form[assignment][show_teammate_reviews]', 'Show teammate reviews?') %>
+      </span>
       &nbsp;&nbsp;&nbsp;&nbsp;
       <!--Maximum number of members per team-->
+    </td>
+  </tr>
+
+  <!-- E2115 Mentor Management -->
+  <tr>
+    <td style='padding:5px' id='assignment_auto_assign_mentor_field'>
+      <input name="assignment_form[assignment][auto_assign_mentor]" type="hidden" value="false"/>
+      <%= check_box_tag(
+            'assignment_form[assignment][auto_assign_mentor]',
+            value='true',
+            checked=@assignment_form.assignment.auto_assign_mentor
+          ) %>
+      <%= label_tag('auto_assign_mentor_label', 'Auto assign mentors when team hits > 50% capacity?') %>
     </td>
   </tr>
 
@@ -157,6 +148,30 @@ function microtaskChanged() {
       <%= check_box_tag('assignment_form[assignment][has_badge]', 'true', @assignment_form.assignment.has_badge) %>
       <%= label_tag('assignment_form[assignment][has_badge]', 'Has badge?') %>
     </td>
+  </tr>
+
+  <!--Conference-->
+  <tr>
+    <td style='padding:5px' id='assignment_is_conference_assignment_field' colspan="2">
+      <input name="assignment_form[assignment][is_conference_assignment]" type="hidden" value="false"/>
+      <%= check_box_tag('assignment_form[assignment][is_conference_assignment]', 'true', @assignment_form.assignment.is_conference_assignment) %>
+      <%= label_tag('assignment_form[assignment][is_conference_assignment]','Will this assignment be used to review papers for conference?') %>
+    </td>
+  </tr>
+  <script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+  <script type="text/javascript">
+       new Clipboard('button');
+  </script>
+  <tr>
+    <% if current_page?(action: 'edit') %>
+      <% if @assignment_form.assignment.is_conference_assignment %>
+        <%  url = polymorphic_url :conference, action: 'new',role: 'Student', assignment_id: @assignment.id %>
+        <div>Link to join conference assignment:
+          <%# <%= link_to conference_user_path(assignment_id: @assignment.id, role: 'Student')%> 
+          <span> <a id = "link" style="color: #5d0a0a"> <%=url%> </a> </span> 
+        </div>
+      <% end %>
+    <% end %>
   </tr>
 
   <% if current_page?(action: 'edit') %>
@@ -207,7 +222,7 @@ function microtaskChanged() {
       <div class="form-inline">
       <!--<input name="assignment_form[assignment][reputation_algorithm]" type="hidden" value="false"/>-->
       <%= label_tag('assignment_form[assignment][reputation_algorithm]', 'Reputation Algorithm?') %>
-      <%= select('assignment_form[assignment]','reputation_algorithm', [['--', ''],['Lauw', 'Lauw'],['Hamer','Hamer']], {:selected => @assignment_form.assignment.reputation_algorithm}, {:class => 'form-control', :style => 'width: 100px'}) %>
+      <%= select('assignment_form[assignment]', 'reputation_algorithm', [['--', ''], %w[Lauw Lauw], %w[Hamer Hamer]], { :selected => @assignment_form.assignment.reputation_algorithm}, { :class => 'form-control', :style => 'width: 100px'}) %>
       </div>
     </td>
   </tr>
@@ -233,7 +248,7 @@ function microtaskChanged() {
     <td style='padding:5px' class="form-inline" colspan="2">
       <input name="assignment_form[assignment][is_answer_tagging_allowed]" type="hidden" value="false" onclick="useAnswerTagChanged()"/>
       <%= check_box_tag('assignment_form[assignment][is_answer_tagging_allowed]', 'true', @assignment_form.assignment.is_answer_tagging_allowed) %>
-      <%= label_tag('assignment_form[assignment][is_answer_tagging_allowed]', 'Allow feedback comments to be tagged by the author?') %>
+      <%= label_tag('assignment_form[assignment][is_answer_tagging_allowed]', 'Allow tag prompts so author can tag feedback comments?') %>
     </td>
   </tr>
   <!-- End answer tagging code -->
@@ -266,9 +281,17 @@ function microtaskChanged() {
     function topicsChanged() {
         var msg = 'Warning! Un-checking this box will remove all topics that have been created.';
         var checkbox = jQuery('#assignment_has_topics');
+
+        // E2115 - bind enabled state of mentor checkbox to checked property
+        // of topics checkbox
+        var mentorCheckbox = jQuery("#auto_assign_mentor_checkbox");
+        mentorCheckbox.prop("disabled", checkbox.is(':checked'));
+
         if (checkbox.is(':checked')) {
             // If this box is checked, display the 'Topics' tab
             jQuery("#topics_tab_header").show();
+            // E2115 - if 'has topics' is checked, uncheck mentor
+            mentorCheckbox.prop("checked", false);
         } else {
             if (confirm(msg)) {
                 // If this box is un-checked, remove all topics and reload page
@@ -290,40 +313,40 @@ function microtaskChanged() {
     }
     <% end %>
 
+    <!-- Violation of DRY principle, adds input field and handles checkboxes hidden states in other views -->
     function hasTeamsChanged() {
-      var msg = 'Warning! Unchecking this box will hide teams that already exist.';
+        var msg = 'Warning! Unchecking this box will hide teams that already exist.';
         var checkbox = jQuery('#team_assignment');
         var team_count_field = jQuery('#assignment_team_count_field');
         var teammate_reviews_field = jQuery('#assignment_show_teammate_reviews');
-        var team_formation_due_date_checkbox = jQuery('#team_formation_due_date_checkbox')
+        var team_formation_due_date_checkbox = jQuery('#team_formation_due_date_checkbox');
+        var autoAssignMentorCheckbox = jQuery('#auto_assign_mentor_checkbox');
 
         jQuery("#questionnaire_table_TeammateReviewQuestionnaire").remove()
         if (checkbox.is(':checked')) {
-          team_count_field.removeAttr('hidden');
-          team_formation_due_date_checkbox.removeAttr('hidden')
-          jQuery('#assignment_form_assignment_max_team_size').val('2');
-          teammate_reviews_field.removeAttr('hidden');
-          addDueDateTableElement(<%= @due_date_nameurl_not_empty==nil ? false:@due_date_nameurl_not_empty %>,'team_formation', 0,<%= due_date(@assignment_form.assignment, 'team_formation').to_json.html_safe %>);
-          addQuestionnaireTableRow(
-                  'TeammateReviewQuestionnaire',
-                  null,
-                  <%= questionnaire(@assignment_form.assignment, 'TeammateReviewQuestionnaire',nil).to_json.html_safe %>,
-                  <%= assignment_questionnaire(@assignment_form.assignment, 'TeammateReviewQuestionnaire',nil).to_json.html_safe %>,
-                  <%= questionnaire_options(@assignment_form.assignment, 'TeammateReviewQuestionnaire',nil).to_json.html_safe %>
-          );
-
+            team_count_field.removeAttr('hidden');
+            team_formation_due_date_checkbox.removeAttr('hidden')
+            jQuery('#assignment_form_assignment_max_team_size').val('2');
+            teammate_reviews_field.removeAttr('hidden');
+            // E2115 hide auto assign mentor checkbox when an
+            // an assignment does not have teams
+            // what would the mentor be assigned to if there are no teams?
+            autoAssignMentorCheckbox.hide();
+            addDueDateTableElement(<%= @due_date_nameurl_not_empty==nil ? false:@due_date_nameurl_not_empty %>,'team_formation', 0,<%= due_date(@assignment_form.assignment, 'team_formation').to_json.html_safe %>);
         } else {
             if (confirm(msg)) {
               team_count_field.attr('hidden', true);
               team_formation_due_date_checkbox.attr('hidden', true)
               teammate_reviews_field.attr('hidden', true);
+              // E2115 show auto assign mentor checkbox when an
+              // an assignment has teams
+              autoAssignMentorCheckbox.show();
               document.getElementById('assignment_form_assignment_max_team_size').value = '1';
               removeDueDateTableElement('team_formation', 0);
-
             } else {
               checkbox.prop('checked', true);
             }
-            if (<%= @assignment_form.assignment.max_team_size == 1%>){
+            if (<%= !@assignment_form.assignment.team_assignment?%>){
               team_count_field.attr('hidden', true);
             }
           } 

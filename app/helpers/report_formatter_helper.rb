@@ -1,35 +1,19 @@
 module ReportFormatterHelper
-  def summary_by_reviewee_and_criteria(params, _session = nil)
-    assign_basics(params)
-    sum = SummaryHelper::Summary.new.summarize_reviews_by_reviewees(@assignment, @summary_ws_url)
-    @summary = sum.summary
-    @reviewers = sum.reviewers
-    @avg_scores_by_reviewee = sum.avg_scores_by_reviewee
-    @avg_scores_by_round = sum.avg_scores_by_round
-    @avg_scores_by_criterion = sum.avg_scores_by_criterion
-  end
-
-  def summary_by_criteria(params, _session = nil)
-    assign_basics(params)
-    sum = SummaryHelper::Summary.new.summarize_reviews_by_criterion(@assignment, @summary_ws_url)
-    @summary = sum.summary
-    @avg_scores_by_round = sum.avg_scores_by_round
-    @avg_scores_by_criterion = sum.avg_scores_by_criterion
-  end
+  include Scoring
 
   def review_response_map(params, _session = nil)
     assign_basics(params)
     @review_user = params[:user]
     # If review response is required call review_response_report method in review_response_map model
     @reviewers = ReviewResponseMap.review_response_report(@id, @assignment, @type, @review_user)
-    @review_scores = @assignment.compute_reviews_hash
-    @avg_and_ranges = @assignment.compute_avg_and_ranges_hash
+    @review_scores = compute_reviews_hash(@assignment)
+    @avg_and_ranges = compute_avg_and_ranges_hash(@assignment)
   end
 
   def feedback_response_map(params, _session = nil)
     assign_basics(params)
     # If review report for feedback is required call feedback_response_report method in feedback_review_response_map model
-    if @assignment.varying_rubrics_by_round?
+    if @assignment.vary_by_round
       @authors, @all_review_response_ids_round_one, @all_review_response_ids_round_two, @all_review_response_ids_round_three =
         FeedbackResponseMap.feedback_response_report(@id, @type)
     else
@@ -42,14 +26,25 @@ module ReportFormatterHelper
     @reviewers = TeammateReviewResponseMap.teammate_response_report(@id)
   end
 
+  # Get reviewers for bookmark ratings and topics for assignment
+  def bookmark_rating_response_map(params, _session = nil)
+    assign_basics(params)
+    @reviewers = BookmarkRatingResponseMap.bookmark_response_report(@id)
+    @topics = @assignment.sign_up_topics
+  end
+
   def calibration(params, session)
     assign_basics(params)
     user = session[:user]
-    participant = AssignmentParticipant.where(parent_id: @id, user_id: user.id).first rescue nil
+    participant = begin
+                    AssignmentParticipant.where(parent_id: @id, user_id: user.id).first
+                  rescue StandardError
+                    nil
+                  end
     create_participant(@id, user.id) if participant.nil?
-    @review_questionnaire_ids = ReviewQuestionnaire.select("id")
+    @review_questionnaire_ids = ReviewQuestionnaire.select('id')
     @assignment_questionnaire = AssignmentQuestionnaire.retrieve_questionnaire_for_assignment(@id).first
-    @questions = @assignment_questionnaire.questionnaire.questions.select {|q| q.type == 'Criterion' or q.type == 'Scale' }
+    @questions = @assignment_questionnaire.questionnaire.questions.select { |q| q.type == 'Criterion' || q.type == 'Scale' }
     @calibration_response_maps = ReviewResponseMap.where(reviewed_object_id: @id, calibrate_to: 1)
     @review_response_map_ids = ReviewResponseMap.select('id').where(reviewed_object_id: @id, calibrate_to: 0)
     @responses = Response.where(map_id: @review_response_map_ids)
@@ -97,22 +92,20 @@ module ReportFormatterHelper
 
   def user_summary_report(line)
     if @user_tagging_report[line.user.name].nil?
-      @user_tagging_report[line.user.name] = VmUserAnswerTagging.new(line.user, line.no_total, line.no_inferred, line.no_taggable,
-                                                                     line.no_tagged, line.no_not_tagged, line.percentage)
+      # E2082 Adding extra field of interval array into data structure
+      @user_tagging_report[line.user.name] = VmUserAnswerTagging.new(line.user, line.percentage, line.no_tagged, line.no_not_tagged, line.no_tagable, line.tag_update_intervals)
     else
-      @user_tagging_report[line.user.name].no_total += line.no_total
-      @user_tagging_report[line.user.name].no_inferred += line.no_inferred
-      @user_tagging_report[line.user.name].no_taggable += line.no_taggable
       @user_tagging_report[line.user.name].no_tagged += line.no_tagged
       @user_tagging_report[line.user.name].no_not_tagged += line.no_not_tagged
+      @user_tagging_report[line.user.name].no_tagable += line.no_tagable
       @user_tagging_report[line.user.name].percentage = calculate_formatted_percentage(line)
     end
   end
 
   def calculate_formatted_percentage(line)
     number_tagged = @user_tagging_report[line.user.name].no_tagged.to_f
-    number_taggable = @user_tagging_report[line.user.name].no_taggable
-    formatted_percentage = format("%.1f", (number_tagged / number_taggable) * 100)
-    @user_tagging_report[line.user.name].no_taggable.zero? ? '-' : formatted_percentage
+    number_taggable = @user_tagging_report[line.user.name].no_tagable
+    formatted_percentage = format('%.1f', (number_tagged / number_taggable) * 100)
+    @user_tagging_report[line.user.name].no_tagable.zero? ? '-' : formatted_percentage
   end
 end

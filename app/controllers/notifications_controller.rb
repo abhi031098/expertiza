@@ -1,16 +1,19 @@
 class NotificationsController < ApplicationController
   before_action :set_notification, only: %i[show edit update destroy]
   helper_method :validate_params
+
   include SecurityHelper
+  include AuthorizationHelper
+
   # Give permission to manage notifications to appropriate roles
   def action_allowed?
-    ['Instructor',
-     'Teaching Assistant',
-     'Administrator'].include? current_role_name
+    current_user_has_ta_privileges?
   end
 
   def run_get_notification
-    redirect_to controller: :student_task, action: :view if current_user.try(:student?)
+    if current_user.try(:student?)
+      redirect_to controller: :student_task, action: :view
+    end
   end
 
   # GET /notifications
@@ -37,7 +40,7 @@ class NotificationsController < ApplicationController
   # POST /notifications
   def create
     if params[:notification]
-      redirect_back
+      redirect_back fallback_location: root_path
       return
     end
     @notification = Notification.new(notification_params)

@@ -1,32 +1,29 @@
 class ParticipantsController < ApplicationController
+  include AuthorizationHelper
+  include ParticipantsHelper
   autocomplete :user, :name
 
   def action_allowed?
     if %w[change_handle update_duties].include? params[:action]
-      ['Instructor',
-       'Teaching Assistant',
-       'Administrator',
-       'Super-Administrator',
-       'Student'].include? current_role_name
+      current_user_has_student_privileges?
     else
-      ['Instructor',
-       'Teaching Assistant',
-       'Administrator',
-       'Super-Administrator'].include? current_role_name
+      current_user_has_ta_privileges?
     end
+  end
+
+  def controller_locale
+    locale_for_student
   end
 
   def list
     if Participant::PARTICIPANT_TYPES.include? params[:model]
-      @root_node = Object.const_get(params[:model] + "Node").find_by(node_object_id: params[:id])
+      @root_node = Object.const_get(params[:model] + 'Node').find_by(node_object_id: params[:id])
       @parent = Object.const_get(params[:model]).find(params[:id])
     end
     begin
       @participants = @parent.participants
       @model = params[:model]
-      # E726 Fall2012 Changes Begin
       @authorization = params[:authorization]
-      # E726 Fall2012 Changes End
     rescue StandardError
       flash[:error] = $ERROR_INFO
     end
@@ -35,7 +32,7 @@ class ParticipantsController < ApplicationController
   def add
     curr_object = Object.const_get(params[:model]).find(params[:id]) if Participant::PARTICIPANT_TYPES.include? params[:model]
     begin
-      permissions = Participant.get_permissions(params[:authorization])
+      permissions = participant_permissions(params[:authorization])
       can_submit = permissions[:can_submit]
       can_review = permissions[:can_review]
       can_take_quiz = permissions[:can_take_quiz]
@@ -51,27 +48,26 @@ class ParticipantsController < ApplicationController
       url_for controller: 'users', action: 'new'
       flash.now[:error] = "The user <b>#{params[:user][:name]}</b> does not exist or has already been added."
     end
-    # E1721 : AJAX for adding participants to assignment changes begin
     render action: 'add.js.erb', layout: false
-    # E1721 changes End.
   end
 
+  # when you change the duties, changes the permissions based on the new duty you go to
   def update_authorizations
-    permissions = Participant.get_permissions(params[:authorization])
+    participant = Participant.find(params[:id])
+    permissions = participant_permissions(params[:authorization])
     can_submit = permissions[:can_submit]
     can_review = permissions[:can_review]
     can_take_quiz = permissions[:can_take_quiz]
-    participant = Participant.find(params[:id])
     parent_id = participant.parent_id
-    participant.update_attributes(can_submit: can_submit, can_review: can_review, can_take_quiz: can_take_quiz)
-    redirect_to action: 'list', id: parent_id, model: participant.class.to_s.gsub("Participant", "")
-  end
-
-  # duties: manager, designer, programmer, tester
-  def update_duties
-    participant = Participant.find(params[:student_id])
-    participant.update_attributes(duty: params[:duty])
-    redirect_to controller: 'student_teams', action: 'view', student_id: participant.id
+    # Upon successfully updating the attributes based on user role, a flash message is displayed to the user after the
+    # change in the database. This also gives the user the error message if the update fails.
+    begin
+      participant.update_attributes(can_submit: can_submit, can_review: can_review, can_take_quiz: can_take_quiz)
+      flash[:success] = 'The role of the selected participants has been successfully updated.'
+    rescue StandardError
+      flash[:error] = 'The update action failed.'
+    end
+    redirect_to action: 'list', id: parent_id, model: participant.class.to_s.gsub('Participant', '')
   end
 
   def destroy
@@ -81,9 +77,9 @@ class ParticipantsController < ApplicationController
       participant.destroy
       flash[:note] = undo_link("The user \"#{participant.user.name}\" has been successfully removed as a participant.")
     rescue StandardError
-      flash[:error] = 'The delete action failed: At least one review mapping or team membership exist for this participant.'
+      flash[:error] = 'This participant is on a team, or is assigned as a reviewer for someone’s work.'
     end
-    redirect_to action: 'list', id: parent_id, model: participant.class.to_s.gsub("Participant", "")
+    redirect_to action: 'list', id: parent_id, model: participant.class.to_s.gsub('Participant', '')
   end
 
   # Copies existing participants from a course down to an assignment
@@ -105,21 +101,22 @@ class ParticipantsController < ApplicationController
           flash[:note] = 'All course participants are already in this assignment'
         end
       else
-        flash[:note] = "No participants were found to inherit this assignment."
+        flash[:note] = 'No participants were found to inherit this assignment.'
       end
     else
-      flash[:error] = "No course was found for this assignment."
+      flash[:error] = 'No course was found for this assignment.'
     end
     redirect_to controller: 'participants', action: 'list', id: assignment.id, model: 'Assignment'
   end
 
+  # Take all participants from an assignment and "bequeath" them to course as course_participants.
   def bequeath_all
     @copied_participants = []
     assignment = Assignment.find(params[:id])
     if assignment.course
       course = assignment.course
       assignment.participants.each do |participant|
-        new_participant = participant.copy(course.id)
+        new_participant = participant.copy_to_course(course.id)
         @copied_participants.push new_participant if new_participant
       end
       # only display undo link if copies of participants are created
@@ -129,7 +126,7 @@ class ParticipantsController < ApplicationController
         flash[:note] = 'All assignment participants are already part of the course'
       end
     else
-      flash[:error] = "This assignment is not associated with a course."
+      flash[:error] = 'This assignment is not associated with a course.'
     end
     redirect_to controller: 'participants', action: 'list', id: assignment.id, model: 'Assignment'
   end
@@ -140,6 +137,7 @@ class ParticipantsController < ApplicationController
   def change_handle
     @participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(@participant.user_id)
+
     unless params[:participant].nil?
       if !AssignmentParticipant.where(parent_id: @participant.parent_id, handle: params[:participant][:handle]).empty?
         ExpertizaLogger.error LoggerMessage.new(controller_name, @participant.name, "Handle #{params[:participant][:handle]} already in use", request)
@@ -147,28 +145,29 @@ class ParticipantsController < ApplicationController
         redirect_to controller: 'participants', action: 'change_handle', id: @participant
       else
         @participant.update_attributes(participant_params)
-        ExpertizaLogger.info LoggerMessage.new(controller_name, @participant.name, "The change handle is saved successfully", request)
+        ExpertizaLogger.info LoggerMessage.new(controller_name, @participant.name, 'The change handle is saved successfully', request)
         redirect_to controller: 'student_task', action: 'view', id: @participant
       end
     end
   end
 
-  def delete_assignment_participant
+  # Deletes participants from an assignment
+  def delete
     contributor = AssignmentParticipant.find(params[:id])
     name = contributor.name
     assignment_id = contributor.assignment
     begin
         contributor.destroy
         flash[:note] = "\"#{name}\" is no longer a participant in this assignment."
-      rescue StandardError
-        flash[:error] = "\"#{name}\" was not removed from this assignment. Please ensure that \"#{name}\" is not a reviewer or metareviewer and try again."
+    rescue StandardError
+      flash[:error] = "\"#{name}\" was not removed from this assignment. Please ensure that \"#{name}\" is not a reviewer or metareviewer and try again."
       end
     redirect_to controller: 'review_mapping', action: 'list_mappings', id: assignment_id
   end
 
-  # Seems like this function is similar to the above function> we are not quite sure what publishing rights mean. Seems like
-  # the values for the last column in http://expertiza.ncsu.edu/student_task/list are sourced from here
-  def view_publishing_rights
+  # A ‘copyright grant’ means the author has given permission to the instructor to use the work outside the course.
+  # This is incompletely implemented, but the values in the last column in http://expertiza.ncsu.edu/student_task/list are sourced from here.
+  def view_copyright_grants
     assignment_id = params[:id]
     assignment = Assignment.find(assignment_id)
     @assignment_name = assignment.name
@@ -177,16 +176,17 @@ class ParticipantsController < ApplicationController
     teams = Team.where(parent_id: assignment_id)
     teams.each do |team|
       team_info = {}
-      team_info[:name] = team.name
+      team_info[:name] = team.name(session[:ip])
       users = []
-      team.users {|team_user| users.append(get_user_info(team_user, assignment)) }
+      team.users { |team_user| users.append(get_user_info(team_user, assignment)) }
       team_info[:users] = users
       @has_topics = get_signup_topics_for_assignment(assignment_id, team_info, team.id)
-      team_without_topic = SignedUpTeam.where("team_id = ?", team.id).none?
+      team_without_topic = SignedUpTeam.where('team_id = ?', team.id).none?
       next if @has_topics && team_without_topic
+
       @teams_info.append(team_info)
     end
-    @teams_info = @teams_info.sort_by {|hashmap| [hashmap[:topic_id] ? 0 : 1, hashmap[:topic_id] || 0] }
+    @teams_info = @teams_info.sort_by { |hashmap| [hashmap[:topic_id] ? 0 : 1, hashmap[:topic_id] || 0] }
   end
 
   private
@@ -202,15 +202,14 @@ class ParticipantsController < ApplicationController
     user = {}
     user[:name] = team_user.name
     user[:fullname] = team_user.fullname
+    # set by default
     permission_granted = false
-    has_signature = false
-    signature_valid = false
     assignment.participants.each do |participant|
       permission_granted = participant.permission_granted? if team_user.id == participant.user.id
     end
     # If permission is granted, set the publisting rights string
-    user[:pub_rights] = permission_granted ? "Granted" : "Denied"
-    user[:verified] = permission_granted && has_signature && signature_valid
+    user[:pub_rights] = permission_granted ? 'Granted' : 'Denied'
+    user[:verified] = false
     user
   end
 
